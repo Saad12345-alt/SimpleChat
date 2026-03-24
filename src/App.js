@@ -2,7 +2,7 @@ import './index.css';
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from "socket.io-client";
 
-const socket = io("http://localhost:3001"); // connect once
+const socket = io("http://localhost:3001");
 
 function App() {
   const [message, setMessage] = useState('');
@@ -11,23 +11,21 @@ function App() {
   const [chat, setChat] = useState([]);
   const [showChat, setShowChat] = useState(false);
   const [file, setFile] = useState(null);
+  const fileInputRef = useRef(null); // To clear the file input after sending
 
   const joinRoom = () => {
-    if (room !== "") {
+    if (room !== "" && username !== "") {
       socket.emit("join_room", room);
-      const running = async () =>
-      {
-        try{
-      const res = await fetch(`http://localhost:3001/messages/${room}`)
-      const data = await res.json();
-      setChat(data);
-      }
-      catch(error) 
-      {
-        console.log("error has occured connecting to backend")
-      }
-    }
-      running();
+      const fetchHistory = async () => {
+        try {
+          const res = await fetch(`http://localhost:3001/messages/${room}`);
+          const data = await res.json();
+          setChat(data);
+        } catch (error) {
+          console.error("Error connecting to backend", error);
+        }
+      };
+      fetchHistory();
       setShowChat(true);
     }
   };
@@ -35,170 +33,114 @@ function App() {
   const messagesRef = useRef(null);
 
   useEffect(() => {
-    // Add messages only if they don't already exist (dedupe by _id)
+    // We only need one listener now because the server sends 
+    // both text and files through "receive_message"
     socket.on("receive_message", (data) => {
-      console.log("Message received:", data);
       setChat((prev) => (prev.some(m => m._id === data._id) ? prev : [...prev, data]));
-    });
-
-    socket.on("receive_file", (data) => {
-      console.log("File message received:", data);
-      setChat((prev) => (prev.some(m => m._id === data._id) ? prev : [...prev, data]));
-    });
-
-    socket.on("file_upload_error", (err) => {
-      console.error("File upload error from server:", err);
-      alert(err.message || "File upload failed");
     });
 
     return () => {
       socket.off("receive_message");
-      socket.off("receive_file");
-      socket.off("file_upload_error");
     };
   }, []);
 
-  // Auto-scroll to bottom whenever chat updates
   useEffect(() => {
-    const el = messagesRef.current;
-    if (el) {
-      // smooth scroll to show newest message
-      el.scrollTop = el.scrollHeight;
+    if (messagesRef.current) {
+      messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
     }
   }, [chat]);
 
-const handleSend = () => {
-  if (file) {
-    sendFile(); // file + optional text
-  } else if (message.trim() !== "") {
-    sendMessage(); // text only
-  }
-};
-
-
-const sendMessage = () => {
-  const payload = { room, username, text: message };
-
-  socket.emit("send_message", payload, (res) => {
-    if (res && res.error) {
-      console.error("send_message error:", res.error);
-      alert("Message failed to send: " + res.error);
-      return;
+  const handleSend = () => {
+    if (file) {
+      sendFile(); 
+    } else if (message.trim() !== "") {
+      sendMessage();
     }
-
-    // Add immediately (server will also emit to other clients)
-    const saved = res && res.message ? res.message : null;
-    if (saved) {
-      setChat(prev => (prev.some(m => m._id === saved._id) ? prev : [...prev, saved]));
-    }
-
-    setMessage("");
-  });
-};
-
-
-const sendFile = () => {
-  const reader = new FileReader();
-
-  if (file.size > 5 * 1024 * 1024) {
-    alert("File too large (max 5MB)");
-    setFile(null);
-    return;
-  }
-
-  reader.onload = () => {
-    const payload = {
-      room,
-      username,
-      text: message,          // ✅ caption
-      fileName: file.name,
-      fileType: file.type,
-      fileBuffer: reader.result,
-    };
-
-    socket.emit("send_file", payload, (res) => {
-      if (res && res.error) {
-        console.error("send_file error:", res.error);
-        alert("File upload failed: " + res.error);
-        return;
-      }
-
-      // saved message returned in ack
-      const saved = res && res.message ? res.message : null;
-      if (saved) {
-        setChat(prev => (prev.some(m => m._id === saved._id) ? prev : [...prev, saved]));
-      }
-
-      setMessage("");
-      setFile(null);
-    });
   };
 
-  reader.readAsDataURL(file);
-};
+  const sendMessage = () => {
+    const payload = { room, username, text: message };
+    // Normal messages still go through Socket.io for speed
+    socket.emit("send_message", payload);
+    setMessage("");
+  };
+
+  // --- NEW MULTER UPLOAD LOGIC ---
+  const sendFile = async () => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("room", room);
+    formData.append("username", username);
+    formData.append("text", message); // Caption
+
+    try {
+      const response = await fetch("http://localhost:3001/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (response.ok) {
+        // Reset states
+        setFile(null);
+        setMessage("");
+        if (fileInputRef.current) fileInputRef.current.value = ""; 
+      } else {
+        const err = await response.json();
+        alert(err.error || "Upload failed");
+      }
+    } catch (err) {
+      console.error("Upload error:", err);
+      alert("Error uploading file");
+    }
+  };
 
   return (
-<div className="chat-app">
-  {!showChat ? (
-    <div className="join-container">
-      <h2>Join a Room</h2>
-      <input
-        type="text"
-        placeholder="Username"
-        onChange={(e) => setUsername(e.target.value)}
-      />
-      <input
-        type="text"
-        placeholder="Room ID"
-        onChange={(e) => setRoom(e.target.value)}
-      />
-      <button onClick={joinRoom}>Join Room</button>
+    <div className="chat-app">
+      {!showChat ? (
+        <div className="join-container">
+          <h2>Join a Room</h2>
+          <input type="text" placeholder="Username" onChange={(e) => setUsername(e.target.value)} />
+          <input type="text" placeholder="Room ID" onChange={(e) => setRoom(e.target.value)} />
+          <button onClick={joinRoom}>Join Room</button>
+        </div>
+      ) : (
+        <div className="chat-container">
+          <div ref={messagesRef} className="messages">
+            {chat.map((msg, i) => (
+              <div key={msg._id || i} className={`message ${msg.username === username ? "own" : ""}`}>
+                <b>{msg.username}: </b>
+                {msg.isFile ? (
+                  <>
+                    <a href={`http://localhost:3001${msg.filePath}`} target="_blank" rel="noreferrer">
+                      📎 {msg.fileName}
+                    </a>
+                    {msg.text && <div className="caption">{msg.text}</div>}
+                  </>
+                ) : (
+                  <span>{msg.text}</span>
+                )}
+              </div>
+            ))}
+          </div>
+          
+          <div className="input-container">
+            <input
+              type="text"
+              value={message}
+              placeholder="Type your message..."
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSend()}
+            />
+            <input 
+              type="file" 
+              ref={fileInputRef}
+              onChange={(e) => setFile(e.target.files[0])} 
+            />
+            <button disabled={!message && !file} onClick={handleSend}>Send</button>
+          </div>
+        </div>
+      )}
     </div>
-  ) : (
-    <div className="chat-container">
-      <div ref={messagesRef} className="messages">
-        {chat.map((msg, i) => (
-         <div key={msg._id || i} className="message">
-  <b>{msg.username}:</b>
-
-  {msg.isFile && (
-    <>
-      <div>
-        <a
-          href={`http://localhost:3001${msg.filePath}`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          📎 {msg.fileName}
-        </a>
-      </div>
-
-      {msg.text && <div className="caption">{msg.text}</div>}
-    </>
-  )}
-
-  {!msg.isFile && msg.text}
-</div>
-                ))}
-      </div>
-      <div className="input-container">
-        <input
-        type="text"
-        value={message}
-        placeholder="Type your message..."
-        onChange={(e) => setMessage(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && handleSend()}
-        />
-        <input type="file" 
-        onChange={(e) => setFile(e.target.files[0])}
-        onKeyDown={(e) => e.key === "Enter" && handleSend()} 
-        />
-        {file && <div className="selected-file">Selected: {file.name}</div> }
-        <button disabled={!message && !file} onClick={handleSend}> Send </button>
-      </div>
-    </div>
-  )}
-</div>
   );
 }
 
