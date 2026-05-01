@@ -7,8 +7,18 @@ const mongoose = require('mongoose');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
+
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // limit each IP to 20 requests per windowMs
+  message: "Too many requests from this IP, please try again later."
+})
 
 const app = express();
+app.use(helmet());
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -39,7 +49,7 @@ const upload = multer({
 });
 
 // --- HTTP Route for File Upload ---
-app.post("/upload", upload.single("file"), async (req, res) => {
+app.post("/upload",limiter, upload.single("file"), async (req, res) => {
   try {
     const { room, username, text } = req.body;
     
