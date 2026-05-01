@@ -9,6 +9,7 @@ const path = require('path');
 const fs = require('fs');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
+const sanitize = require('mango-sanitizer');
 
 
 const limiter = rateLimit({
@@ -37,20 +38,32 @@ const storage = multer.diskStorage({
 
 const upload = multer({ 
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { 
+    fileSize: 5 * 1024 * 1024, // 5MB limit - stops server storage from filling up
+    files: 1 // Only 1 file per request
+  }, 
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
-    if (file.mimetype.startsWith("image/") || allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
+    // 1. Check Extension
+    const filetypes = /jpeg|jpg|png|pdf|docx|doc/;
+    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+    
+    // 2. Check MimeType
+    const mimetype = filetypes.test(file.mimetype);
+
+    if (mimetype && extname) {
+      return cb(null, true);
     } else {
-      cb(new Error("File type not allowed"));
+      cb(new Error("Error: Only Images, PDFs and Docs are allowed!"));
     }
   }
 });
 
 // --- HTTP Route for File Upload ---
 app.post("/upload",limiter, upload.single("file"), async (req, res) => {
+
   try {
+    const cleanRoom = sanitize(req.body.room);
+    const cleanUsername = sanitize(req.body.username);
     const { room, username, text } = req.body;
     
     const newMessage = new Message({
