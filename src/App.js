@@ -2,7 +2,9 @@ import './index.css';
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from "socket.io-client";
 
-const socket = io("http://localhost:3001");
+const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || "http://localhost:3001";
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
+const socket = io(SOCKET_URL);
 
 function App() {
   const [message, setMessage] = useState('');
@@ -18,7 +20,7 @@ function App() {
       socket.emit("join_room", room);
       const fetchHistory = async () => {
         try {
-          const res = await fetch(`http://localhost:3001/messages/${room}`);
+          const res = await fetch(`${API_URL}/messages/${room}`);
           const data = await res.json();
           setChat(data);
         } catch (error) {
@@ -74,7 +76,7 @@ function App() {
     formData.append("text", message); // Caption
 
     try {
-      const response = await fetch("http://localhost:3001/upload", {
+      const response = await fetch(`${API_URL}/upload`, {
         method: "POST",
         body: formData,
       });

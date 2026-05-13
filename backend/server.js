@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -9,12 +10,19 @@ const path = require('path');
 const fs = require('fs');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
-const sanitize = require('mango-sanitizer');
+const sanitize = require('mongo-sanitize');
 
+// Load environment variables
+const PORT = process.env.SERVER_PORT || 3001;
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/chatapp';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024;
+const RATE_LIMIT_WINDOW = parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000;
+const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 20;
 
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // limit each IP to 20 requests per windowMs
+  windowMs: RATE_LIMIT_WINDOW,
+  max: RATE_LIMIT_MAX,
   message: "Too many requests from this IP, please try again later."
 })
 
@@ -27,7 +35,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // --- Multer Configuration ---
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = './uploads';
+    const dir = path.join(__dirname, 'uploads');
     if (!fs.existsSync(dir)) fs.mkdirSync(dir);
     cb(null, dir);
   },
@@ -39,7 +47,7 @@ const storage = multer.diskStorage({
 const upload = multer({ 
   storage,
   limits: { 
-    fileSize: 5 * 1024 * 1024, // 5MB limit - stops server storage from filling up
+    fileSize: MAX_FILE_SIZE,
     files: 1 // Only 1 file per request
   }, 
   fileFilter: (req, file, cb) => {
@@ -59,7 +67,7 @@ const upload = multer({
 });
 
 // --- HTTP Route for File Upload ---
-app.post("/upload",limiter, upload.single("file"), async (req, res) => {
+app.post("/upload", limiter, upload.single("file"), async (req, res) => {
 
   try {
     const cleanRoom = sanitize(req.body.room);
@@ -87,10 +95,20 @@ app.post("/upload",limiter, upload.single("file"), async (req, res) => {
   }
 });
 
+// --- GET Route for Message History ---
+app.get("/messages/:room", async (req, res) => {
+  try {
+    const messages = await Message.find({ room: req.params.room }).sort({ createdAt: 1 });
+    res.json(messages);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Socket.io Logic (Simplified) ---
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "http://localhost:3000" }
+  cors: { origin: FRONTEND_URL }
 });
 
 io.on("connection", (socket) => {
@@ -103,5 +121,17 @@ io.on("connection", (socket) => {
   });
 });
 
-mongoose.connect("mongodb://127.0.0.1:27017/chatapp");
-server.listen(3001, () => console.log("Server running on port 3001"));
+// --- Database Connection & Server Start ---
+mongoose.connect(MONGO_URI)
+  .then(() => {
+    console.log("MongoDB connected successfully");
+    server.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+      console.log(`Frontend URL: ${FRONTEND_URL}`);
+      console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    });
+  })
+  .catch(err => {
+    console.error("MongoDB connection error:", err);
+    process.exit(1);
+  });
