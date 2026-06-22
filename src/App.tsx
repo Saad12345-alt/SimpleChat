@@ -117,6 +117,16 @@ function App() {
 
   return (
     <div className="chat-app">
+      <div className="navbar">
+        <h1> FreeChat </h1>
+        <div className="room-history">
+        <h1> Previous Room:  </h1>
+        <select>
+          <option value="room1">Room 1</option>
+          <option value="room2">Room 2</option>
+        </select>
+        </div>
+      </div>
       {!showChat ? (
         <div className="join-container">
           <h2>Join a Room</h2>
@@ -133,7 +143,9 @@ function App() {
           <button onClick={joinRoom}>Join Room</button>
         </div>
       ) : (
+        
         <div className="chat-container">
+          <span className= "room-name">Room: {room}</span>
           <div ref={messagesRef} className="messages">
             {chat.map((msg, i) => (
               <div key={msg._id ?? i} className={`message ${msg.username === username ? "own" : ""}`}>
