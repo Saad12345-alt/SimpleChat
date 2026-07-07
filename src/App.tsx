@@ -21,20 +21,26 @@ interface UploadErrorResponse {
   error: string;
 }
 
+
+
 function App() {
   const [message, setMessage] = useState<string>('');
   const [room, setRoom] = useState<string>('');
   const [username, setUsername] = useState<string>('');
   const [chat, setChat] = useState<Message[]>([]);
   const [showChat, setShowChat] = useState<boolean>(false);
+  const [roomHistory, setRoomHistory] = useState<string[]>([]);
   const [file, setFile] = useState<File | null>(null);
-
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
 
   const joinRoom = () => {
     if (room !== "" && username !== "") {
       socket.emit("join_room", room);
+
+    if (!roomHistory.includes(room)) {
+      setRoomHistory((prev) => [room, ...prev]);
+    }
 
       const fetchHistory = async (): Promise<void> => {
         try {
@@ -61,7 +67,7 @@ function App() {
     return () => {
       socket.off("receive_message");
     };
-  }, []);
+  }, [roomHistory]);
 
   useEffect(() => {
     if (messagesRef.current) {
@@ -118,12 +124,17 @@ function App() {
   return (
     <div className="chat-app">
       <div className="navbar">
-        <h1> FreeChat </h1>
+        <h1> SimplyChat </h1>
         <div className="room-history">
-        <h1> Previous Room:  </h1>
-        <select>
-          <option value="room1">Room 1</option>
-          <option value="room2">Room 2</option>
+        <h1> Previous Rooms:  </h1>
+        <select className="room-select" disabled={roomHistory.length === 0} defaultValue="">
+          <option value="" disabled>
+            {roomHistory.length === 0 ? "No rooms yet" : "Rooms"}
+          </option>
+          {roomHistory.map((r, index) => 
+          (
+            <option key={index} value={r}>{r}</option>
+          ))}
         </select>
         </div>
       </div>
@@ -140,16 +151,21 @@ function App() {
             placeholder="Room ID"
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRoom(e.target.value)}
           />
-          <button onClick={joinRoom}>Join Room</button>
+          <div className="join-btn-container">
+          <button onClick={joinRoom} className="join-btn">
+            Join Room
+          </button>
+          </div>
         </div>
       ) : (
         
         <div className="chat-container">
+          <button className="go-back-btn" onClick ={() => setShowChat(!showChat)}> Go Back</button>
           <span className= "room-name">Room: {room}</span>
           <div ref={messagesRef} className="messages">
             {chat.map((msg, i) => (
               <div key={msg._id ?? i} className={`message ${msg.username === username ? "own" : ""}`}>
-                <b>{msg.username}: </b>
+                {msg.username !== username && <b>{msg.username}: </b>}
                 {msg.isFile ? (
                   <>
                     <a
@@ -169,21 +185,23 @@ function App() {
           </div>
 
           <div className="input-container">
-            <input
-              type="text"
-              value={message}
-              placeholder="Type your message..."
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMessage(e.target.value)}
-              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) =>
-                e.key === "Enter" && handleSend()
-              }
-            />
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-            />
-            <button disabled={!message && !file} onClick={handleSend}>
+            <div className="input-row">
+              <input
+                type="text"
+                value={message}
+                placeholder="Type your message..."
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMessage(e.target.value)}
+                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) =>
+                  e.key === "Enter" && handleSend()
+                }
+              />
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+              />
+            </div>
+            <button className="send-btn" disabled={!message && !file} onClick={handleSend}>
               Send
             </button>
           </div>
