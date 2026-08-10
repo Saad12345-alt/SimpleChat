@@ -1,6 +1,7 @@
 import './index.css';
 import { useState, useEffect, useRef } from 'react';
 import { io } from "socket.io-client";
+import { Helmet } from "react-helmet-async";
 
 const SOCKET_URL = process.env.REACT_APP_SOCKET_URL ?? "http://localhost:3001";
 const API_URL = process.env.REACT_APP_API_URL ?? "http://localhost:3001";
@@ -31,6 +32,7 @@ function App() {
   const [showChat, setShowChat] = useState<boolean>(false);
   const [roomHistory, setRoomHistory] = useState<string[]>([]);
   const [file, setFile] = useState<File | null>(null);
+  const [showNotice, setShowNotice] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
 
@@ -54,6 +56,9 @@ function App() {
 
       void fetchHistory();
       setShowChat(true);
+      
+      setShowNotice(true);
+      setTimeout(() => setShowNotice(false), 10000);
     }
   };
 
@@ -123,6 +128,20 @@ function App() {
 
   return (
     <div className="chat-app">
+      <Helmet>
+        <title>SecureChat - Chat, Connect, Instantly</title>
+        <meta
+          name="description"
+          content="Chat with anyone in real time. Create a room or join one in seconds — free, fast, and secure."
+        />
+        <link rel="canonical" href="https://siimplychat.com/" />
+        <meta property="og:title" content="SecureChat - Chat, Connect, Instantly" />
+        <meta
+          property="og:description"
+          content="Create a room or join one in seconds — free, fast, and secure."
+        />
+        <meta property="og:url" content="https://simplychat.com/" />
+      </Helmet>
       <div className="navbar">
         <h1> SimplyChat </h1>
         <div className="room-history">
@@ -130,7 +149,7 @@ function App() {
         <select className="room-select" disabled={roomHistory.length === 0} defaultValue="">
           <option value="" disabled>
             {roomHistory.length === 0 ? "No rooms yet" : "Rooms"}
-          </option>
+          </option >
           {roomHistory.map((r, index) => 
           (
             <option key={index} value={r}>{r}</option>
@@ -158,6 +177,13 @@ function App() {
           </div>
         </div>
       ) : (
+        <>
+        {showNotice &&
+          (
+            <div className="room-notice">
+            Messages in this room will be cleared after 24 hours.
+            </div>
+          )}
         
         <div className="chat-container">
           <button className="go-back-btn" onClick ={() => setShowChat(!showChat)}> Go Back</button>
@@ -206,6 +232,7 @@ function App() {
             </button>
           </div>
         </div>
+        </>
       )}
     </div>
   );

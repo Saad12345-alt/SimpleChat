@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+const mongoose = require("mongoose");
 
 // --- Schema ---
 const messageSchema = new mongoose.Schema(
@@ -10,6 +10,11 @@ const messageSchema = new mongoose.Schema(
     fileName: { type: String, default: "" },
     filePath: { type: String, default: "" },
     fileType: { type: String, default: "" },
+    createdAt: {
+    type: Date,
+    default: Date.now,
+    expireAfterSeconds: 86400 // 24 hours, in seconds
+  }
   },
   { timestamps: true }
 );
@@ -17,4 +22,4 @@ const messageSchema = new mongoose.Schema(
 // --- Model ---
 const Roommsg = mongoose.model("Message", messageSchema);
 
-export default Roommsg;
+module.exports = Roommsg;
